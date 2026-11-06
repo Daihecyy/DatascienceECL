@@ -1,3 +1,4 @@
 **/data/*
 .venv
 submission.csv
+**/__pycache__/
