@@ -104,7 +104,15 @@ for param, val in search.best_params_.items():
 
 best_model = search.best_estimator_
 
-print(best_model.feature_importances_)
+classifier = best_model.named_steps["classifier"]
+preprocessor = best_model.named_steps["preprocessor"]
+feature_names = preprocessor.get_feature_names_out()
+importances = classifier.feature_importances_
+importance_df = pd.DataFrame(
+    {"feature": feature_names, "importance": importances}
+).sort_values(by="importance", ascending=False)
+print(importance_df.head(20))
+
 
 predictions_encoded = best_model.predict(X_raw_test)
 predictions = target_categories[predictions_encoded]
