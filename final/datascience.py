@@ -13,6 +13,8 @@ from utils import (
     regex_features,
 )
 
+RANDOM_STATE = 42
+
 features_train = read_ds("train")
 features_test = read_ds("test")
 
@@ -21,7 +23,6 @@ filtered_uniques = list({filter_action(un) for un in uniques if not un.startswit
 
 train_outliers = get_outliers(features_train)
 cleaned_features_train = features_train[~train_outliers].reset_index(drop=True)
-
 
 sessions_train = get_sessions(cleaned_features_train)
 sessions_test = get_sessions(features_test)
@@ -36,7 +37,7 @@ X_raw_train = pd.concat(
     [
         X_train_core,
         cleaned_features_train[["navigateur"]],
-        X_regex_train[["ecran_top", "conf_top", "chaine_top"]],
+        X_regex_train,
     ],
     axis=1,
 )
@@ -44,18 +45,21 @@ X_raw_test = pd.concat(
     [
         X_test_core,
         features_test[["navigateur"]],
-        X_regex_test[["ecran_top", "conf_top", "chaine_top"]],
+        X_regex_test,
     ],
     axis=1,
 )
-
 y, target_categories = pd.factorize(cleaned_features_train["util"])
 
 ohe_cols = ["navigateur"]
-ordinal_cols = ["ecran_top", "conf_top", "chaine_top"]
+ordinal_cols = [
+    "ecran_top",
+    "conf_top",
+    "chaine_top",
+]
 preprocessor = ColumnTransformer(
     transformers=[
-        ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=True), ohe_cols),
+        ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe_cols),
         (
             "cat",
             OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
@@ -67,25 +71,26 @@ preprocessor = ColumnTransformer(
 pipeline = Pipeline(
     steps=[
         ("preprocessor", preprocessor),
-        ("classifier", ExtraTreesClassifier(random_state=42, n_jobs=-1)),
+        ("classifier", ExtraTreesClassifier(random_state=RANDOM_STATE, n_jobs=-1)),
     ]
 )
 
 param_distributions = {
     "classifier__n_estimators": [500, 800, 1000],
+    "classifier__criterion": ["gini", "entropy", "log_loss"],
     "classifier__max_depth": [None, 20, 40, 60],
     "classifier__min_samples_split": [2, 4],
     "classifier__min_samples_leaf": [1, 2, 4],
     "classifier__max_features": ["sqrt", "log2", 0.8],
 }
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv = StratifiedKFold(shuffle=True, random_state=RANDOM_STATE)
 search = RandomizedSearchCV(
     estimator=pipeline,
     param_distributions=param_distributions,
     n_iter=10,
     cv=cv,
     scoring="f1_macro",
-    random_state=42,
+    random_state=RANDOM_STATE,
     verbose=1,
 )
 
@@ -98,6 +103,8 @@ for param, val in search.best_params_.items():
     print(f"  {param}: {val}")
 
 best_model = search.best_estimator_
+
+print(best_model.feature_importances_)
 
 predictions_encoded = best_model.predict(X_raw_test)
 predictions = target_categories[predictions_encoded]
