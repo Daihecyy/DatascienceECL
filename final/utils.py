@@ -78,12 +78,6 @@ def build_features(sessions):
         ecrans = [m for a in s for m in PATTERN_ECRAN.findall(a)]
         confs = [m for a in s for m in PATTERN_CONF_ECRAN.findall(a)]
         chaines = [m for a in s for m in PATTERN_CHAINE.findall(a)]
-        if i == 0:
-            print(actions[:30])
-            print(ecrans[:30])
-            print(confs[:30])
-            print(chaines[:30])
-        i += 1
 
         actions_bigrams = [f"{e1} -> {e2}" for e1, e2 in zip(actions[:-1], actions[1:])]
 
@@ -97,7 +91,7 @@ def build_features(sessions):
             "ecran_top": most_frequent(ecrans),
             "conf_top": most_frequent(confs),
             "chaine_top": most_frequent(chaines),
-            # "actions_bigrams_str": "|".join(actions_bigrams),
+            "actions_bigrams_str": "|".join(actions_bigrams),
         }
 
         compte = Counter(actions)

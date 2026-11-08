@@ -25,8 +25,8 @@ cleaned_features_train = features_train[~train_outliers].reset_index(drop=True)
 sessions_train = get_sessions(cleaned_features_train)
 sessions_test = get_sessions(features_test)
 
-X_train_core = build_features(sessions_train).reset_index(drop=True)
-X_test_core = build_features(sessions_test).reset_index(drop=True)
+X_train_core = build_features(sessions_train).reset_index(drop=True).fillna(0)
+X_test_core = build_features(sessions_test).reset_index(drop=True).fillna(0)
 
 X_raw_train = pd.concat(
     [
@@ -58,13 +58,13 @@ preprocessor = ColumnTransformer(
             OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
             ordinal_cols,
         ),
-        # (
-        #     "vect",
-        #     TfidfVectorizer(
-        #         token_pattern=r"(?u)\b\w+\s*->\s*\w+\b",
-        #     ),
-        #     "actions_bigrams_str",  # <--- Changed from ["ecran_bigrams_str"] to a string
-        # ),
+        (
+            "vect",
+            TfidfVectorizer(
+                token_pattern=r"(?u)\b\w+\s*->\s*\w+\b",
+            ),
+            "actions_bigrams_str",
+        ),
     ],
     remainder="passthrough",
 )
