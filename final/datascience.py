@@ -1,16 +1,17 @@
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from utils import (
     build_features,
-    filter_action,
+    clean_action,
     get_outliers,
     get_sessions,
+    normalize_name,
     read_ds,
-    regex_features,
 )
 
 RANDOM_STATE = 42
@@ -18,26 +19,19 @@ RANDOM_STATE = 42
 features_train = read_ds("train")
 features_test = read_ds("test")
 
-uniques = features_train.iloc[:, 2:].stack().dropna().unique()
-filtered_uniques = list({filter_action(un) for un in uniques if not un.startswith("t")})
-
 train_outliers = get_outliers(features_train)
 cleaned_features_train = features_train[~train_outliers].reset_index(drop=True)
 
 sessions_train = get_sessions(cleaned_features_train)
 sessions_test = get_sessions(features_test)
 
-X_train_core = build_features(sessions_train, filtered_uniques).reset_index(drop=True)
-X_test_core = build_features(sessions_test, filtered_uniques).reset_index(drop=True)
-
-X_regex_train = regex_features(sessions_train).reset_index(drop=True)
-X_regex_test = regex_features(sessions_test).reset_index(drop=True)
+X_train_core = build_features(sessions_train).reset_index(drop=True)
+X_test_core = build_features(sessions_test).reset_index(drop=True)
 
 X_raw_train = pd.concat(
     [
         X_train_core,
         cleaned_features_train[["navigateur"]],
-        X_regex_train,
     ],
     axis=1,
 )
@@ -45,7 +39,6 @@ X_raw_test = pd.concat(
     [
         X_test_core,
         features_test[["navigateur"]],
-        X_regex_test,
     ],
     axis=1,
 )
@@ -65,6 +58,13 @@ preprocessor = ColumnTransformer(
             OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
             ordinal_cols,
         ),
+        # (
+        #     "vect",
+        #     TfidfVectorizer(
+        #         token_pattern=r"(?u)\b\w+\s*->\s*\w+\b",
+        #     ),
+        #     "actions_bigrams_str",  # <--- Changed from ["ecran_bigrams_str"] to a string
+        # ),
     ],
     remainder="passthrough",
 )
@@ -83,7 +83,7 @@ param_distributions = {
     "classifier__min_samples_leaf": [1, 2, 4],
     "classifier__max_features": ["sqrt", "log2", 0.8],
 }
-cv = StratifiedKFold(shuffle=True, random_state=RANDOM_STATE)
+cv = StratifiedKFold(n_splits=4, shuffle=True, random_state=RANDOM_STATE)
 search = RandomizedSearchCV(
     estimator=pipeline,
     param_distributions=param_distributions,

@@ -22,7 +22,7 @@ def to_categories(df, col="util"):
     df[[col]] = df[[col]].apply(lambda x: x.cat.codes)
 
 
-def filter_action(value: str):
+def clean_action(value: str):
     for delim in ["(", "<", "$", "1"]:
         if delim in value and (low_ind := value.index(delim)):
             value = value[:low_ind]
@@ -52,48 +52,58 @@ def is_timestamp(a):
     return re.fullmatch(r"t\d+", a) is not None
 
 
-def build_features(sessions, filtered_uniques):
+def most_frequent(valeurs):
+    return Counter(valeurs).most_common(1)[0][0] if valeurs else "aucun"
+
+
+def normalize_name(name: str) -> str:
+    if not isinstance(name, str):
+        return ""
+
+    name = name.lower().strip()
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^a-z0-9_]", "", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+
+    return name
+
+
+def build_features(sessions):
     lignes = []
+    i = 0
     for s in sessions:
-        actions = [a for a in s if not is_timestamp(a)]
+        actions = [normalize_name(clean_action(a)) for a in s if not is_timestamp(a)]
         temps = [int(a[1:]) for a in s if is_timestamp(a)]
         n_actions = len(actions)
+        ecrans = [m for a in s for m in PATTERN_ECRAN.findall(a)]
+        confs = [m for a in s for m in PATTERN_CONF_ECRAN.findall(a)]
+        chaines = [m for a in s for m in PATTERN_CHAINE.findall(a)]
+        if i == 0:
+            print(actions[:30])
+            print(ecrans[:30])
+            print(confs[:30])
+            print(chaines[:30])
+        i += 1
+
+        actions_bigrams = [f"{e1} -> {e2}" for e1, e2 in zip(actions[:-1], actions[1:])]
 
         f = {
             "n_actions": len(actions),
             "n_actions_uniques": len(set(actions)),
             "duree": max(temps, default=0),
+            "n_ecrans_total": len(ecrans),
+            "n_confs_total": len(confs),
+            "n_chaines_total": len(chaines),
+            "ecran_top": most_frequent(ecrans),
+            "conf_top": most_frequent(confs),
+            "chaine_top": most_frequent(chaines),
+            # "actions_bigrams_str": "|".join(actions_bigrams),
         }
 
-        compte = Counter(filter_action(a) for a in actions)
-        for type_action in filtered_uniques:
-            f["freq_" + type_action] = compte.get(type_action, 0) / n_actions
+        compte = Counter(actions)
+        for ta, count in compte.items():
+            f[f"freq_{ta}"] = count / n_actions
 
         lignes.append(f)
-
-    return pd.DataFrame(lignes)
-
-
-def most_frequent(valeurs):
-    return Counter(valeurs).most_common(1)[0][0] if valeurs else "aucun"
-
-
-def regex_features(sessions):
-    lignes = []
-    for s in sessions:
-        ecrans = [m for a in s for m in PATTERN_ECRAN.findall(a)]
-        confs = [m for a in s for m in PATTERN_CONF_ECRAN.findall(a)]
-        chaines = [m for a in s for m in PATTERN_CHAINE.findall(a)]
-
-        lignes.append(
-            {
-                "n_ecrans_total": len(ecrans),
-                "n_confs_total": len(confs),
-                "n_chaines_total": len(chaines),
-                "ecran_top": most_frequent(ecrans),
-                "conf_top": most_frequent(confs),
-                "chaine_top": most_frequent(chaines),
-            }
-        )
 
     return pd.DataFrame(lignes)
