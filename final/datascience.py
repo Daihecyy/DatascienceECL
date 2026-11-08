@@ -36,11 +36,10 @@ y_train, target_categories = pd.factorize(cleaned_features_train["util"])
 
 
 ### === Preprocessing ===
-ohe_cols = ["navigateur"]
 markers = ["actions", "ecrans", "confs", "chaines"]
 preprocessor = ColumnTransformer(
     transformers=[
-        ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe_cols),
+        ("ohe", OneHotEncoder(handle_unknown="ignore"), ["navigateur"]),
         *[
             (
                 f"vect_{marker}",

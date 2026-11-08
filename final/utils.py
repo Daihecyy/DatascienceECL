@@ -1,5 +1,4 @@
 import re
-from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -9,7 +8,7 @@ PATTERN_CONF_ECRAN = re.compile(r"<(.*?)>")
 PATTERN_CHAINE = re.compile(r"\$(.*?)\$")
 
 
-def read_ds(ds_name: str):
+def read_ds(ds_name: str) -> pd.DataFrame:
     with open(f"data/{ds_name}.csv") as f:
         max_actions = max(len(str(c).split(",")) for c in f)
         f.seek(0)
@@ -18,7 +17,7 @@ def read_ds(ds_name: str):
         return pd.read_csv(f, names=column_labels, dtype=str)
 
 
-def to_categories(df, col="util"):
+def to_categories(df: pd.DataFrame, col: str = "util"):
     df[[col]] = df[[col]].apply(lambda x: x.cat.codes)
 
 
@@ -29,7 +28,7 @@ def clean_action(value: str):
     return value
 
 
-def get_sessions(df) -> list[list[str]]:
+def get_sessions(df: pd.DataFrame) -> list[list[str]]:
     debut = 2 if "util" in df.columns else 1  # le test n'a pas de colonne util
     return [
         [v for v in ligne if isinstance(v, str)]
@@ -53,7 +52,7 @@ def normalize_string(text: str) -> str:
     return text
 
 
-def get_outliers(df):
+def get_outliers(df: pd.DataFrame) -> pd.DataFrame:
     df_length = df.iloc[:, 2:].notna().sum(axis=1)
     log_length = np.log10(df_length)
     q1, q3 = log_length.quantile([0.25, 0.75])
@@ -64,30 +63,37 @@ def get_outliers(df):
     return outliers
 
 
-def build_features(sessions):
+def build_features(sessions: list[list[str]]) -> pd.DataFrame:
     lignes = []
-    for session in sessions:
+    for user_session in sessions:
         actions = [
-            normalize_string(clean_action(a)) for a in session if not is_timestamp(a)
+            normalize_string(clean_action(raw_action))
+            for raw_action in user_session
+            if not is_timestamp(raw_action)
         ]
-        temps = (int(a[1:]) for a in session if is_timestamp(a))
+        timestamps = (
+            int(raw_action[1:])
+            for raw_action in user_session
+            if is_timestamp(raw_action)
+        )
         ecrans = [
-            normalize_string(word)
-            for action in session
-            for word in PATTERN_ECRAN.findall(action)
+            normalize_string(ecran)
+            for raw_action in user_session
+            for ecran in PATTERN_ECRAN.findall(raw_action)
         ]
         confs = [
-            normalize_string(word)
-            for action in session
-            for word in PATTERN_CONF_ECRAN.findall(action)
+            normalize_string(conf)
+            for raw_action in user_session
+            for conf in PATTERN_CONF_ECRAN.findall(raw_action)
         ]
         chaines = [
-            normalize_string(word)
-            for action in session
-            for word in PATTERN_CHAINE.findall(action)
+            normalize_string(chaine)
+            for raw_action in user_session
+            for chaine in PATTERN_CHAINE.findall(raw_action)
         ]
 
         f = {
+            # Stats
             "n_actions": len(actions),
             "n_actions_uniques": len(set(actions)),
             "n_ecrans": len(ecrans),
@@ -96,7 +102,8 @@ def build_features(sessions):
             "n_confs_uniques": len(set(confs)),
             "n_chaines": len(chaines),
             "n_chaines_uniques": len(set(chaines)),
-            "duree": max(temps, default=0),
+            "duree": max(timestamps, default=0),
+            # User markers
             "actions": " ".join(actions),
             "ecrans": " ".join(ecrans),
             "confs": " ".join(confs),
