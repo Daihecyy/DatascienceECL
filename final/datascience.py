@@ -18,18 +18,12 @@ from utils import (
 
 RANDOM_STATE = 42
 
+# === Model training ===
 features_train = read_ds("train")
-features_test = read_ds("test")
-
 train_outliers = get_outliers(features_train)
 cleaned_features_train = features_train[~train_outliers].reset_index(drop=True)
-
 sessions_train = get_sessions(cleaned_features_train)
-sessions_test = get_sessions(features_test)
-
 X_train_core = build_features(sessions_train).reset_index(drop=True)
-X_test_core = build_features(sessions_test).reset_index(drop=True)
-
 X_raw_train = pd.concat(
     [
         X_train_core,
@@ -37,18 +31,11 @@ X_raw_train = pd.concat(
     ],
     axis=1,
 )
-X_raw_test = pd.concat(
-    [
-        X_test_core,
-        features_test[["navigateur"]],
-    ],
-    axis=1,
-)
-y, target_categories = pd.factorize(cleaned_features_train["util"])
+y_train, target_categories = pd.factorize(cleaned_features_train["util"])
+
 
 ohe_cols = ["navigateur"]
-
-cols = ["actions", "ecrans", "confs", "chaines"]
+columns = ["actions", "ecrans", "confs", "chaines"]
 preprocessor = ColumnTransformer(
     transformers=[
         ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe_cols),
@@ -63,13 +50,16 @@ preprocessor = ColumnTransformer(
                         ),
                         (
                             "svd",
-                            TruncatedSVD(n_components=50, random_state=RANDOM_STATE),
+                            TruncatedSVD(
+                                n_components=50 if col != "chaines" else 100,
+                                random_state=RANDOM_STATE,
+                            ),
                         ),
                     ]
                 ),
                 col,
             )
-            for col in cols
+            for col in columns
         ],
     ],
 )
@@ -78,7 +68,18 @@ preprocessor = ColumnTransformer(
 pipeline = Pipeline(
     steps=[
         ("preprocessor", preprocessor),
-        ("classifier", ExtraTreesClassifier(random_state=RANDOM_STATE, n_jobs=-1)),
+        (
+            "classifier",
+            ExtraTreesClassifier(
+                n_estimators=500,
+                min_samples_leaf=2,
+                max_features=0.8,
+                max_depth=40,
+                criterion="log_loss",
+                random_state=RANDOM_STATE,
+                n_jobs=-1,
+            ),
+        ),
     ]
 )
 
@@ -89,7 +90,9 @@ param_distributions = {
     "classifier__min_samples_split": [2, 4],
     "classifier__min_samples_leaf": [1, 2, 4],
     "classifier__max_features": ["sqrt", "log2", 0.8],
-    **{f"preprocessor__vect_{col}__svd__n_components": [30, 50, 100] for col in cols},
+    **{
+        f"preprocessor__vect_{col}__svd__n_components": [30, 50, 100] for col in columns
+    },
 }
 cv = StratifiedKFold(n_splits=4, shuffle=True, random_state=RANDOM_STATE)
 search = RandomizedSearchCV(
@@ -102,9 +105,7 @@ search = RandomizedSearchCV(
     verbose=1,
 )
 
-print("Starting randomized hyperparameter search with cross-validation...")
-search.fit(X_raw_train, y)
-
+search.fit(X_raw_train, y_train)
 print(f"\nBest CV F1-macro Score: {search.best_score_:.4f}")
 print("Best Parameters:")
 for param, val in search.best_params_.items():
@@ -112,15 +113,18 @@ for param, val in search.best_params_.items():
 
 best_model = search.best_estimator_
 
-classifier = best_model.named_steps["classifier"]
-preprocessor = best_model.named_steps["preprocessor"]
-feature_names = preprocessor.get_feature_names_out()
-importances = classifier.feature_importances_
-importance_df = pd.DataFrame(
-    {"feature": feature_names, "importance": importances}
-).sort_values(by="importance", ascending=False)
-print(importance_df.head(20))
 
+# === Prediction ===
+features_test = read_ds("test")
+sessions_test = get_sessions(features_test)
+X_test_core = build_features(sessions_test).reset_index(drop=True)
+X_raw_test = pd.concat(
+    [
+        X_test_core,
+        features_test[["navigateur"]],
+    ],
+    axis=1,
+)
 
 predictions_encoded = best_model.predict(X_raw_test)
 predictions = target_categories[predictions_encoded]

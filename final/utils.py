@@ -29,6 +29,30 @@ def clean_action(value: str):
     return value
 
 
+def get_sessions(df) -> list[list[str]]:
+    debut = 2 if "util" in df.columns else 1  # le test n'a pas de colonne util
+    return [
+        [v for v in ligne if isinstance(v, str)]
+        for ligne in df.iloc[:, debut:].to_numpy()
+    ]
+
+
+def is_timestamp(a: str) -> bool:
+    return re.fullmatch(r"t\d+", a) is not None
+
+
+def normalize_string(text: str) -> str:
+    if not isinstance(text, str):
+        return ""
+
+    text = text.lower().strip()
+    text = re.sub(r"\s+", "_", text)
+    text = re.sub(r"[^a-z0-9_]", "", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+
+    return text
+
+
 def get_outliers(df):
     df_length = df.iloc[:, 2:].notna().sum(axis=1)
     log_length = np.log10(df_length)
@@ -40,41 +64,13 @@ def get_outliers(df):
     return outliers
 
 
-def get_sessions(df):
-    debut = 2 if "util" in df.columns else 1  # le test n'a pas de colonne util
-    return [
-        [v for v in ligne if isinstance(v, str)]
-        for ligne in df.iloc[:, debut:].to_numpy()
-    ]
-
-
-def is_timestamp(a):
-    return re.fullmatch(r"t\d+", a) is not None
-
-
-def most_frequent(valeurs):
-    return Counter(valeurs).most_common(1)[0][0] if valeurs else "aucun"
-
-
-def normalize_string(name: str) -> str:
-    if not isinstance(name, str):
-        return ""
-
-    name = name.lower().strip()
-    name = re.sub(r"\s+", "_", name)
-    name = re.sub(r"[^a-z0-9_]", "", name)
-    name = re.sub(r"_+", "_", name).strip("_")
-
-    return name
-
-
 def build_features(sessions):
     lignes = []
     for session in sessions:
         actions = [
             normalize_string(clean_action(a)) for a in session if not is_timestamp(a)
         ]
-        temps = [int(a[1:]) for a in session if is_timestamp(a)]
+        temps = (int(a[1:]) for a in session if is_timestamp(a))
         ecrans = [
             normalize_string(word)
             for action in session
@@ -92,6 +88,14 @@ def build_features(sessions):
         ]
 
         f = {
+            "n_actions": len(actions),
+            "n_actions_uniques": len(set(actions)),
+            "n_ecrans": len(ecrans),
+            "n_ecrans_uniques": len(set(ecrans)),
+            "n_confs": len(confs),
+            "n_confs_uniques": len(set(confs)),
+            "n_chaines": len(chaines),
+            "n_chaines_uniques": len(set(chaines)),
             "duree": max(temps, default=0),
             "actions": " ".join(actions),
             "ecrans": " ".join(ecrans),
