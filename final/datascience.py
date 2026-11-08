@@ -1,16 +1,18 @@
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import TruncatedSVD
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
+from sklearn.model_selection import (
+    RandomizedSearchCV,
+    StratifiedKFold,
+)
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from sklearn.preprocessing import OneHotEncoder
 from utils import (
     build_features,
-    clean_action,
     get_outliers,
     get_sessions,
-    normalize_name,
     read_ds,
 )
 
@@ -25,8 +27,8 @@ cleaned_features_train = features_train[~train_outliers].reset_index(drop=True)
 sessions_train = get_sessions(cleaned_features_train)
 sessions_test = get_sessions(features_test)
 
-X_train_core = build_features(sessions_train).reset_index(drop=True).fillna(0)
-X_test_core = build_features(sessions_test).reset_index(drop=True).fillna(0)
+X_train_core = build_features(sessions_train).reset_index(drop=True)
+X_test_core = build_features(sessions_test).reset_index(drop=True)
 
 X_raw_train = pd.concat(
     [
@@ -45,29 +47,34 @@ X_raw_test = pd.concat(
 y, target_categories = pd.factorize(cleaned_features_train["util"])
 
 ohe_cols = ["navigateur"]
-ordinal_cols = [
-    "ecran_top",
-    "conf_top",
-    "chaine_top",
-]
+
+cols = ["actions", "ecrans", "confs", "chaines"]
 preprocessor = ColumnTransformer(
     transformers=[
         ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe_cols),
-        (
-            "cat",
-            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
-            ordinal_cols,
-        ),
-        (
-            "vect",
-            TfidfVectorizer(
-                token_pattern=r"(?u)\b\w+\s*->\s*\w+\b",
-            ),
-            "actions_bigrams_str",
-        ),
+        *[
+            (
+                f"vect_{col}",
+                Pipeline(
+                    [
+                        (
+                            "tfidf",
+                            TfidfVectorizer(ngram_range=(1, 3), max_features=5000),
+                        ),
+                        (
+                            "svd",
+                            TruncatedSVD(n_components=50, random_state=RANDOM_STATE),
+                        ),
+                    ]
+                ),
+                col,
+            )
+            for col in cols
+        ],
     ],
-    remainder="passthrough",
 )
+
+
 pipeline = Pipeline(
     steps=[
         ("preprocessor", preprocessor),
@@ -76,12 +83,13 @@ pipeline = Pipeline(
 )
 
 param_distributions = {
-    "classifier__n_estimators": [500, 800, 1000],
+    "classifier__n_estimators": [500, 1000, 1500],
     "classifier__criterion": ["gini", "entropy", "log_loss"],
     "classifier__max_depth": [None, 20, 40, 60],
     "classifier__min_samples_split": [2, 4],
     "classifier__min_samples_leaf": [1, 2, 4],
     "classifier__max_features": ["sqrt", "log2", 0.8],
+    **{f"preprocessor__vect_{col}__svd__n_components": [30, 50, 100] for col in cols},
 }
 cv = StratifiedKFold(n_splits=4, shuffle=True, random_state=RANDOM_STATE)
 search = RandomizedSearchCV(

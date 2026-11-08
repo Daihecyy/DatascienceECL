@@ -56,7 +56,7 @@ def most_frequent(valeurs):
     return Counter(valeurs).most_common(1)[0][0] if valeurs else "aucun"
 
 
-def normalize_name(name: str) -> str:
+def normalize_string(name: str) -> str:
     if not isinstance(name, str):
         return ""
 
@@ -70,33 +70,34 @@ def normalize_name(name: str) -> str:
 
 def build_features(sessions):
     lignes = []
-    i = 0
-    for s in sessions:
-        actions = [normalize_name(clean_action(a)) for a in s if not is_timestamp(a)]
-        temps = [int(a[1:]) for a in s if is_timestamp(a)]
-        n_actions = len(actions)
-        ecrans = [m for a in s for m in PATTERN_ECRAN.findall(a)]
-        confs = [m for a in s for m in PATTERN_CONF_ECRAN.findall(a)]
-        chaines = [m for a in s for m in PATTERN_CHAINE.findall(a)]
-
-        actions_bigrams = [f"{e1} -> {e2}" for e1, e2 in zip(actions[:-1], actions[1:])]
+    for session in sessions:
+        actions = [
+            normalize_string(clean_action(a)) for a in session if not is_timestamp(a)
+        ]
+        temps = [int(a[1:]) for a in session if is_timestamp(a)]
+        ecrans = [
+            normalize_string(word)
+            for action in session
+            for word in PATTERN_ECRAN.findall(action)
+        ]
+        confs = [
+            normalize_string(word)
+            for action in session
+            for word in PATTERN_CONF_ECRAN.findall(action)
+        ]
+        chaines = [
+            normalize_string(word)
+            for action in session
+            for word in PATTERN_CHAINE.findall(action)
+        ]
 
         f = {
-            "n_actions": len(actions),
-            "n_actions_uniques": len(set(actions)),
             "duree": max(temps, default=0),
-            "n_ecrans_total": len(ecrans),
-            "n_confs_total": len(confs),
-            "n_chaines_total": len(chaines),
-            "ecran_top": most_frequent(ecrans),
-            "conf_top": most_frequent(confs),
-            "chaine_top": most_frequent(chaines),
-            "actions_bigrams_str": "|".join(actions_bigrams),
+            "actions": " ".join(actions),
+            "ecrans": " ".join(ecrans),
+            "confs": " ".join(confs),
+            "chaines": " ".join(chaines),
         }
-
-        compte = Counter(actions)
-        for ta, count in compte.items():
-            f[f"freq_{ta}"] = count / n_actions
 
         lignes.append(f)
 
