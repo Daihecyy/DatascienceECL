@@ -62,6 +62,7 @@ preprocessor = ColumnTransformer(
             for col in columns
         ],
     ],
+    remainder="passthrough",
 )
 
 
