@@ -18,7 +18,8 @@ from utils import (
 
 RANDOM_STATE = 42
 
-# === Model training ===
+## ==== MODEL TRAINING ====
+### === Data extraction ===
 features_train = read_ds("train")
 train_outliers = get_outliers(features_train)
 cleaned_features_train = features_train[~train_outliers].reset_index(drop=True)
@@ -34,14 +35,15 @@ X_raw_train = pd.concat(
 y_train, target_categories = pd.factorize(cleaned_features_train["util"])
 
 
+### === Preprocessing ===
 ohe_cols = ["navigateur"]
-columns = ["actions", "ecrans", "confs", "chaines"]
+markers = ["actions", "ecrans", "confs", "chaines"]
 preprocessor = ColumnTransformer(
     transformers=[
         ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe_cols),
         *[
             (
-                f"vect_{col}",
+                f"vect_{marker}",
                 Pipeline(
                     [
                         (
@@ -51,21 +53,22 @@ preprocessor = ColumnTransformer(
                         (
                             "svd",
                             TruncatedSVD(
-                                n_components=50 if col != "chaines" else 100,
+                                n_components=50 if marker != "chaines" else 100,
                                 random_state=RANDOM_STATE,
                             ),
                         ),
                     ]
                 ),
-                col,
+                marker,
             )
-            for col in columns
+            for marker in markers
         ],
     ],
     remainder="passthrough",
 )
 
 
+### === Model definition ===
 pipeline = Pipeline(
     steps=[
         ("preprocessor", preprocessor),
@@ -84,6 +87,7 @@ pipeline = Pipeline(
     ]
 )
 
+### === Hyperparameters tuning ===
 param_distributions = {
     "classifier__n_estimators": [500, 1000, 1500],
     "classifier__criterion": ["gini", "entropy", "log_loss"],
@@ -92,7 +96,8 @@ param_distributions = {
     "classifier__min_samples_leaf": [1, 2, 4],
     "classifier__max_features": ["sqrt", "log2", 0.8],
     **{
-        f"preprocessor__vect_{col}__svd__n_components": [30, 50, 100] for col in columns
+        f"preprocessor__vect_{marker}__svd__n_components": [30, 50, 100]
+        for marker in markers
     },
 }
 cv = StratifiedKFold(n_splits=4, shuffle=True, random_state=RANDOM_STATE)
@@ -112,10 +117,9 @@ print("Best Parameters:")
 for param, val in search.best_params_.items():
     print(f"  {param}: {val}")
 
-best_model = search.best_estimator_
 
-
-# === Prediction ===
+## ==== PREDICTION ====
+### === Data extraction ===
 features_test = read_ds("test")
 sessions_test = get_sessions(features_test)
 X_test_core = build_features(sessions_test).reset_index(drop=True)
@@ -127,9 +131,12 @@ X_raw_test = pd.concat(
     axis=1,
 )
 
+### === Prediction ===
+best_model = search.best_estimator_
 predictions_encoded = best_model.predict(X_raw_test)
 predictions = target_categories[predictions_encoded]
 
+### === CSV writing ===
 submission = pd.DataFrame(
     {"RowId": range(1, len(X_raw_test) + 1), "prediction": predictions}
 )
