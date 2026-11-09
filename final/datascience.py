@@ -36,6 +36,7 @@ y_train, target_categories = pd.factorize(cleaned_features_train["util"])
 
 
 ### === Preprocessing ===
+# Les paramètres ont été fixés par rapport au meilleur résultat de RandomizedSearchCV
 markers = ["actions", "ecrans", "confs", "chaines"]
 preprocessor = ColumnTransformer(
     transformers=[
