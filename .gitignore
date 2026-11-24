@@ -2,3 +2,6 @@
 .venv
 submission.csv
 **/__pycache__
+**/corpus.jsonl
+**/queries.jsonl
+**/valid.tsv
